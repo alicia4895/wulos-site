@@ -38,13 +38,13 @@ const currency = (n) =>
 // to test without moving real money before you switch sandbox to false.
 const PAYFAST_CONFIG = {
   sandbox: true, // set to false only once you've tested with real sandbox payments
-  merchantId: "10000100", // replace with your merchant_id
-  merchantKey: "46f0cd694581a", // replace with your merchant_key
+  merchantId: "10053370", // replace with your merchant_id
+  merchantKey: "cy495e0osf3q5", // replace with your merchant_key
   // These three must be real, publicly reachable URLs on your deployed site —
   // they won't work from inside this artifact preview, only once it's hosted.
-  returnUrl: "https://wulosicecubes.co.za/thank-you",
-  cancelUrl: "https://wulosicecubes.co.za/cart",
-  notifyUrl: "https://wulosicecubes.co.za/api/payfast-notify",
+  returnUrl: "https://wulos-site.vercel.app/thank-you",
+  cancelUrl: " https://wulos-site.vercel.app/cart",
+  notifyUrl: " https://wulos-site.vercel.app/api/payfast-notify",
 };
 
 function generateOrderRef() {

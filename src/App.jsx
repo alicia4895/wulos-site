@@ -111,6 +111,7 @@ export default function WulosIceCubes() {
   const [packQty, setPackQty] = useState(0);
   const [freezerQty, setFreezerQty] = useState(0);
   const [stage, setStage] = useState("shop"); // shop -> details -> pay -> done
+  const [fulfillment, setFulfillment] = useState("delivery"); // "delivery" or "pickup"
   const [customer, setCustomer] = useState({
     name: "",
     phone: "",
@@ -123,12 +124,14 @@ export default function WulosIceCubes() {
   const packSavings = fullPriceNoDiscount(packQty) - packPrice;
   const freezerTotal = freezerQty * FREEZER_PRICE;
   const hasItems = packQty > 0 || freezerQty > 0;
-  const delivery = hasItems ? DELIVERY_FEE : 0;
+  const delivery = hasItems && fulfillment === "delivery" ? DELIVERY_FEE : 0;
   const total = packPrice + freezerTotal + delivery;
 
   const canCheckout = hasItems;
   const detailsValid =
-    customer.name.trim() && customer.phone.trim() && customer.address.trim();
+    customer.name.trim() &&
+    customer.phone.trim() &&
+    (fulfillment === "pickup" || customer.address.trim());
 
   const step = (setter, val, delta, min = 0) =>
     setter(Math.max(min, val + delta));
@@ -199,25 +202,6 @@ export default function WulosIceCubes() {
               Hire a mobile freezer
             </a>
           </div>
-        </div>
-
-        {/* price tag signature */}
-        <div
-          className="price-tag hidden md:flex absolute top-10 right-10 flex-col items-center justify-center shadow-lg"
-          style={{
-            width: 108,
-            height: 108,
-            background: "#E4572E",
-            color: "#FFF4DE",
-            borderRadius: 12,
-          }}
-        >
-          <span className="mono-font text-xs" style={{ opacity: 0.85 }}>
-            bundle deal
-          </span>
-          <span className="display-font text-2xl" style={{ fontWeight: 800 }}>
-            10=R200
-          </span>
         </div>
       </section>
 
@@ -385,7 +369,10 @@ export default function WulosIceCubes() {
               )}
               <div className="flex justify-between" style={{ opacity: 0.8 }}>
                 <span className="flex items-center gap-1">
-                  <Truck size={14} /> Delivery (Giyani area)
+                  <Truck size={14} />
+                  {fulfillment === "delivery"
+                    ? "Delivery (Giyani area)"
+                    : "Collection (free)"}
                 </span>
                 <span>{currency(delivery)}</span>
               </div>
@@ -405,15 +392,43 @@ export default function WulosIceCubes() {
               className="mt-5 w-full py-3 rounded-full font-semibold"
               style={{ background: "#FFB100", color: "#0B2027" }}
             >
-              Continue to delivery details
+              Continue to collection / delivery details
             </button>
           )}
 
           {stage === "details" && (
             <div className="mt-5 space-y-3">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFulfillment("pickup")}
+                  className="flex-1 py-2 rounded-full text-sm font-semibold border-2"
+                  style={{
+                    borderColor: "#FFF4DE",
+                    background:
+                      fulfillment === "pickup" ? "#FFB100" : "transparent",
+                    color: fulfillment === "pickup" ? "#0B2027" : "#FFF4DE",
+                  }}
+                >
+                  Collect (free)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFulfillment("delivery")}
+                  className="flex-1 py-2 rounded-full text-sm font-semibold border-2"
+                  style={{
+                    borderColor: "#FFF4DE",
+                    background:
+                      fulfillment === "delivery" ? "#FFB100" : "transparent",
+                    color: fulfillment === "delivery" ? "#0B2027" : "#FFF4DE",
+                  }}
+                >
+                  Delivery ({currency(DELIVERY_FEE)})
+                </button>
+              </div>
               <input
                 className="w-full px-4 py-2 rounded-lg text-sm"
-                style={{ color: "#0B2027" }}
+                style={{ color: "#0B2027", background: "white" }}
                 placeholder="Full name"
                 value={customer.name}
                 onChange={(e) =>
@@ -422,26 +437,28 @@ export default function WulosIceCubes() {
               />
               <input
                 className="w-full px-4 py-2 rounded-lg text-sm"
-                style={{ color: "#0B2027" }}
+                style={{ color: "#0B2027", background: "white" }}
                 placeholder="Phone number"
                 value={customer.phone}
                 onChange={(e) =>
                   setCustomer({ ...customer, phone: e.target.value })
                 }
               />
-              <input
-                className="w-full px-4 py-2 rounded-lg text-sm"
-                style={{ color: "#0B2027" }}
-                placeholder="Delivery address in Giyani"
-                value={customer.address}
-                onChange={(e) =>
-                  setCustomer({ ...customer, address: e.target.value })
-                }
-              />
+              {fulfillment === "delivery" && (
+                <input
+                  className="w-full px-4 py-2 rounded-lg text-sm"
+                  style={{ color: "#0B2027", background: "white" }}
+                  placeholder="Delivery address in Giyani"
+                  value={customer.address}
+                  onChange={(e) =>
+                    setCustomer({ ...customer, address: e.target.value })
+                  }
+                />
+              )}
               <input
                 type="date"
                 className="w-full px-4 py-2 rounded-lg text-sm"
-                style={{ color: "#0B2027" }}
+                style={{ color: "#0B2027", background: "white" }}
                 value={customer.date}
                 onChange={(e) =>
                   setCustomer({ ...customer, date: e.target.value })
@@ -449,7 +466,7 @@ export default function WulosIceCubes() {
               />
               <textarea
                 className="w-full px-4 py-2 rounded-lg text-sm"
-                style={{ color: "#0B2027" }}
+                style={{ color: "#0B2027", background: "white" }}
                 placeholder="Notes (optional)"
                 rows={2}
                 value={customer.notes}
@@ -567,7 +584,7 @@ export default function WulosIceCubes() {
         style={{ opacity: 0.75 }}
       >
         <div className="flex items-center gap-2">
-          <Phone size={14} /> Call or WhatsApp to confirm bulk orders
+          <Phone size={14} /> Call or WhatsApp 078 306 7444 to confirm bulk orders
         </div>
         <div className="flex items-center gap-2">
           <MapPin size={14} /> Giyani, Limpopo

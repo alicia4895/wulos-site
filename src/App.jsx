@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect } from "react";
+import { createClient } from "@supabase/supabase-js";
 import {
   Snowflake,
   Truck,
@@ -11,6 +12,8 @@ import {
   ShoppingCart,
   Check,
   X,
+  Package,
+  Lock,
 } from "lucide-react";
 
 // ---- Pricing logic -----------------------------------------------------
@@ -28,6 +31,19 @@ function fullPriceNoDiscount(qty) {
 
 const DELIVERY_FEE = 250;
 const FREEZER_PRICE = 1500;
+
+// ---- Order tracking (Supabase) -------------------------------------------
+// Free database that stores each order and its status.
+const SUPABASE_URL = "https://cczaxrktdbrmynfggjyk.supabase.co";
+const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNjemF4cmt0ZGJybXluZmdnanlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc0Nzc1NDcsImV4cCI6MjEwMzA1MzU0N30.ToZh2xSkPycztafgW1lESSVDgN_jGuaaeqdNC_Hy4SY";
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Change this to something only you and your driver know. This is basic
+// protection (fine for a small business) — not full account security.
+const DRIVER_PASSCODE = "wulo2026";
+
+const ORDER_STATUSES = ["Placed", "Preparing", "Out for Delivery", "Delivered"];
 
 const currency = (n) =>
   `R${n.toLocaleString("en-ZA", { minimumFractionDigits: 0 })}`;
@@ -108,6 +124,7 @@ function redirectToPayFast({ amount, itemName, orderRef, customer }) {
 }
 
 export default function WulosIceCubes() {
+  const [view, setView] = useState("shop"); // "shop" | "track" | "driver"
   const [packQty, setPackQty] = useState(0);
   const [freezerQty, setFreezerQty] = useState(0);
   const [stage, setStage] = useState("shop"); // shop -> details -> pay -> done
@@ -119,6 +136,26 @@ export default function WulosIceCubes() {
     date: "",
     notes: "",
   });
+  const [orderRef, setOrderRef] = useState(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+
+  // Track order state
+  const [trackInput, setTrackInput] = useState("");
+  const [trackResults, setTrackResults] = useState(null);
+  const [trackLoading, setTrackLoading] = useState(false);
+  const [trackError, setTrackError] = useState("");
+
+  // Driver state
+  const [driverAuthed, setDriverAuthed] = useState(false);
+  const [driverPasscodeInput, setDriverPasscodeInput] = useState("");
+  const [driverOrders, setDriverOrders] = useState([]);
+  const [driverLoading, setDriverLoading] = useState(false);
+
+  // Let #track and #driver links jump straight to those screens
+  useEffect(() => {
+    if (window.location.hash === "#track") setView("track");
+    if (window.location.hash === "#driver") setView("driver");
+  }, []);
 
   const packPrice = calcPackPrice(packQty);
   const packSavings = fullPriceNoDiscount(packQty) - packPrice;
@@ -132,6 +169,69 @@ export default function WulosIceCubes() {
     customer.name.trim() &&
     customer.phone.trim() &&
     (fulfillment === "pickup" || customer.address.trim());
+
+  // Saves the order to Supabase (status: Placed) then moves to the pay screen.
+  async function saveOrderAndProceed() {
+    if (!detailsValid) return;
+    setSavingOrder(true);
+    const ref = generateOrderRef();
+    const { error } = await supabase.from("orders").insert({
+      order_ref: ref,
+      name: customer.name,
+      phone: customer.phone,
+      address:
+        fulfillment === "delivery" ? customer.address : "Collection — Giyani",
+      fulfillment,
+      items_summary: buildItemName({ packQty, freezerQty }),
+      total,
+      status: "Placed",
+    });
+    setSavingOrder(false);
+    if (error) {
+      alert("Something went wrong saving your order. Please try again.");
+      return;
+    }
+    setOrderRef(ref);
+    setStage("pay");
+  }
+
+  async function handleTrackSearch() {
+    const query = trackInput.trim();
+    if (!query) return;
+    setTrackLoading(true);
+    setTrackError("");
+    setTrackResults(null);
+
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*")
+      .or(`order_ref.eq.${query},phone.eq.${query}`)
+      .order("created_at", { ascending: false });
+
+    setTrackLoading(false);
+    if (error || !data || data.length === 0) {
+      setTrackError("No order found with that order number or phone number.");
+      return;
+    }
+    setTrackResults(data);
+  }
+
+  async function loadDriverOrders() {
+    setDriverLoading(true);
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*")
+      .order("created_at", { ascending: false });
+    setDriverLoading(false);
+    if (!error && data) setDriverOrders(data);
+  }
+
+  async function updateOrderStatus(id, newStatus) {
+    await supabase.from("orders").update({ status: newStatus }).eq("id", id);
+    setDriverOrders((prev) =>
+      prev.map((o) => (o.id === id ? { ...o, status: newStatus } : o))
+    );
+  }
 
   const step = (setter, val, delta, min = 0) =>
     setter(Math.max(min, val + delta));
@@ -160,18 +260,32 @@ export default function WulosIceCubes() {
         className="sticky top-0 z-20 flex items-center justify-between px-6 py-4"
         style={{ background: "#FFF4DE", borderBottom: "2px solid #0B2027" }}
       >
-        <div className="flex items-center gap-2">
+        <button
+          onClick={() => setView("shop")}
+          className="flex items-center gap-2"
+        >
           <Snowflake style={{ color: "#0E7C9E" }} size={26} />
           <span className="display-font text-xl" style={{ fontWeight: 800 }}>
             Wulo&apos;s Ice Cubes
           </span>
-        </div>
-        <div className="hidden sm:flex items-center gap-2 text-sm mono-font">
-          <MapPin size={16} />
-          <span>Serving Giyani &amp; surrounds</span>
+        </button>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setView("track")}
+            className="flex items-center gap-1 text-sm font-semibold"
+            style={{ color: "#0E7C9E" }}
+          >
+            <Package size={16} /> Track order
+          </button>
+          <div className="hidden sm:flex items-center gap-2 text-sm mono-font">
+            <MapPin size={16} />
+            <span>Serving Giyani &amp; surrounds</span>
+          </div>
         </div>
       </nav>
 
+      {view === "shop" && (
+      <>
       {/* HERO */}
       <section className="relative overflow-hidden px-6 py-14 sm:py-20">
         <div className="max-w-4xl mx-auto text-center relative z-10">
@@ -484,15 +598,15 @@ export default function WulosIceCubes() {
                   Back
                 </button>
                 <button
-                  disabled={!detailsValid}
-                  onClick={() => detailsValid && setStage("pay")}
+                  disabled={!detailsValid || savingOrder}
+                  onClick={saveOrderAndProceed}
                   className="flex-1 py-3 rounded-full font-semibold"
                   style={{
                     background: detailsValid ? "#0E7C9E" : "#3a4a4f",
                     color: "#FFF4DE",
                   }}
                 >
-                  Continue to payment
+                  {savingOrder ? "Saving order…" : "Continue to payment"}
                 </button>
               </div>
             </div>
@@ -500,6 +614,19 @@ export default function WulosIceCubes() {
 
           {stage === "pay" && (
             <div className="mt-5 space-y-4">
+              {orderRef && (
+                <div
+                  className="rounded-lg p-4 text-sm"
+                  style={{ background: "rgba(255,177,0,0.15)" }}
+                >
+                  <div className="font-semibold mb-1">
+                    Your order number: <span className="mono-font">{orderRef}</span>
+                  </div>
+                  <p style={{ opacity: 0.8 }}>
+                    Save this — you'll use it to track your order status.
+                  </p>
+                </div>
+              )}
               <div
                 className="rounded-lg p-4 text-sm"
                 style={{ background: "rgba(255,244,222,0.08)" }}
@@ -518,7 +645,7 @@ export default function WulosIceCubes() {
                   redirectToPayFast({
                     amount: total,
                     itemName: buildItemName({ packQty, freezerQty }),
-                    orderRef: generateOrderRef(),
+                    orderRef: orderRef || generateOrderRef(),
                     customer,
                   })
                 }
@@ -589,7 +716,206 @@ export default function WulosIceCubes() {
         <div className="flex items-center gap-2">
           <MapPin size={14} /> Giyani, Limpopo
         </div>
+        <button
+          onClick={() => setView("driver")}
+          className="text-xs underline"
+          style={{ opacity: 0.5 }}
+        >
+          Driver login
+        </button>
       </footer>
+      </>
+      )}
+
+      {view === "track" && (
+        <section className="px-6 py-16 max-w-lg mx-auto min-h-[60vh]">
+          <h2 className="display-font text-2xl mb-2" style={{ fontWeight: 700 }}>
+            Track your order
+          </h2>
+          <p className="text-sm mb-6" style={{ opacity: 0.75 }}>
+            Enter the order number you got at checkout, or the phone number
+            you ordered with.
+          </p>
+          <div className="flex gap-2">
+            <input
+              className="flex-1 px-4 py-2 rounded-lg text-sm border-2"
+              style={{ borderColor: "#0B2027" }}
+              placeholder="e.g. WULO-1234567890 or your phone number"
+              value={trackInput}
+              onChange={(e) => setTrackInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleTrackSearch()}
+            />
+            <button
+              onClick={handleTrackSearch}
+              disabled={trackLoading}
+              className="px-5 py-2 rounded-lg font-semibold"
+              style={{ background: "#0E7C9E", color: "white" }}
+            >
+              {trackLoading ? "…" : "Search"}
+            </button>
+          </div>
+
+          {trackError && (
+            <p className="mt-4 text-sm" style={{ color: "#E4572E" }}>
+              {trackError}
+            </p>
+          )}
+
+          {trackResults && (
+            <div className="mt-6 space-y-4">
+              {trackResults.map((order) => {
+                const currentIdx = ORDER_STATUSES.indexOf(order.status);
+                return (
+                  <div
+                    key={order.id}
+                    className="rounded-2xl p-5"
+                    style={{ background: "white", border: "2px solid #0B2027" }}
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <div className="font-semibold mono-font">
+                          {order.order_ref}
+                        </div>
+                        <div className="text-sm" style={{ opacity: 0.7 }}>
+                          {order.items_summary}
+                        </div>
+                      </div>
+                      <div className="font-semibold mono-font">
+                        {currency(order.total)}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {ORDER_STATUSES.map((s, i) => (
+                        <React.Fragment key={s}>
+                          <div
+                            className="flex-1 h-2 rounded-full"
+                            style={{
+                              background:
+                                i <= currentIdx ? "#0E7C9E" : "#E5E5E5",
+                            }}
+                          />
+                        </React.Fragment>
+                      ))}
+                    </div>
+                    <div
+                      className="mt-2 text-sm font-semibold"
+                      style={{ color: "#0E7C9E" }}
+                    >
+                      {order.status}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {view === "driver" && (
+        <section className="px-6 py-16 max-w-2xl mx-auto min-h-[60vh]">
+          {!driverAuthed ? (
+            <div className="max-w-sm mx-auto text-center">
+              <Lock size={32} className="mx-auto mb-3" style={{ color: "#0E7C9E" }} />
+              <h2 className="display-font text-xl mb-4" style={{ fontWeight: 700 }}>
+                Driver login
+              </h2>
+              <input
+                type="password"
+                className="w-full px-4 py-2 rounded-lg text-sm border-2 mb-3"
+                style={{ borderColor: "#0B2027" }}
+                placeholder="Passcode"
+                value={driverPasscodeInput}
+                onChange={(e) => setDriverPasscodeInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && driverPasscodeInput === DRIVER_PASSCODE) {
+                    setDriverAuthed(true);
+                    loadDriverOrders();
+                  }
+                }}
+              />
+              <button
+                onClick={() => {
+                  if (driverPasscodeInput === DRIVER_PASSCODE) {
+                    setDriverAuthed(true);
+                    loadDriverOrders();
+                  } else {
+                    alert("Wrong passcode.");
+                  }
+                }}
+                className="w-full py-2 rounded-lg font-semibold"
+                style={{ background: "#0E7C9E", color: "white" }}
+              >
+                Log in
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="display-font text-xl" style={{ fontWeight: 700 }}>
+                  All orders
+                </h2>
+                <button
+                  onClick={loadDriverOrders}
+                  className="text-sm font-semibold"
+                  style={{ color: "#0E7C9E" }}
+                >
+                  {driverLoading ? "Loading…" : "Refresh"}
+                </button>
+              </div>
+              <div className="space-y-4">
+                {driverOrders.map((order) => (
+                  <div
+                    key={order.id}
+                    className="rounded-2xl p-5"
+                    style={{ background: "white", border: "2px solid #0B2027" }}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <div className="font-semibold mono-font">
+                          {order.order_ref}
+                        </div>
+                        <div className="text-sm" style={{ opacity: 0.7 }}>
+                          {order.name} · {order.phone}
+                        </div>
+                        <div className="text-sm" style={{ opacity: 0.7 }}>
+                          {order.items_summary}
+                        </div>
+                        <div className="text-sm" style={{ opacity: 0.7 }}>
+                          {order.address}
+                        </div>
+                      </div>
+                      <div className="font-semibold mono-font">
+                        {currency(order.total)}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {ORDER_STATUSES.map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => updateOrderStatus(order.id, s)}
+                          className="px-3 py-1 rounded-full text-xs font-semibold border-2"
+                          style={{
+                            borderColor: "#0B2027",
+                            background: order.status === s ? "#0E7C9E" : "white",
+                            color: order.status === s ? "white" : "#0B2027",
+                          }}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                {driverOrders.length === 0 && !driverLoading && (
+                  <p className="text-sm" style={{ opacity: 0.7 }}>
+                    No orders yet.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

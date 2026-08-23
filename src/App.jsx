@@ -171,6 +171,15 @@ export default function WulosIceCubes() {
     (fulfillment === "pickup" || customer.address.trim());
 
   // Saves the order to Supabase (status: Placed) then moves to the pay screen.
+  // Fire-and-forget: failure to send an SMS should never block the order.
+  function sendSms(to, message) {
+    fetch("/api/send-sms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to, message }),
+    }).catch(() => {});
+  }
+
   async function saveOrderAndProceed() {
     if (!detailsValid) return;
     setSavingOrder(true);
@@ -192,6 +201,10 @@ export default function WulosIceCubes() {
       return;
     }
     setOrderRef(ref);
+    sendSms(
+      customer.phone,
+      `Wulo's Ice Cubes: Order ${ref} received! We'll text you when it's being prepared and out for delivery.`
+    );
     setStage("pay");
   }
 
@@ -216,6 +229,37 @@ export default function WulosIceCubes() {
     setTrackResults(data);
   }
 
+  // Keeps the tracking page live: if a driver updates the order's status
+  // while a customer has this page open, it updates on screen automatically
+  // — no refresh or SMS needed for this part.
+  useEffect(() => {
+    if (!trackResults || trackResults.length === 0) return;
+    const refs = trackResults.map((o) => o.order_ref);
+
+    const channel = supabase
+      .channel("order-status-watch")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "orders" },
+        (payload) => {
+          if (refs.includes(payload.new.order_ref)) {
+            setTrackResults((prev) =>
+              prev.map((o) =>
+                o.order_ref === payload.new.order_ref
+                  ? { ...o, status: payload.new.status }
+                  : o
+              )
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [trackResults === null]);
+
   async function loadDriverOrders() {
     setDriverLoading(true);
     const { data, error } = await supabase
@@ -226,11 +270,25 @@ export default function WulosIceCubes() {
     if (!error && data) setDriverOrders(data);
   }
 
+  const STATUS_SMS_MESSAGES = {
+    Preparing: (ref) =>
+      `Wulo's Ice Cubes: Order ${ref} is now being prepared.`,
+    "Out for Delivery": (ref) =>
+      `Wulo's Ice Cubes: Order ${ref} is out for delivery — see you soon!`,
+    Delivered: (ref) =>
+      `Wulo's Ice Cubes: Order ${ref} has been delivered. Thank you for your order!`,
+  };
+
   async function updateOrderStatus(orderRefToUpdate, newStatus) {
     await supabase.from("orders").update({ status: newStatus }).eq("order_ref", orderRefToUpdate);
     setDriverOrders((prev) =>
       prev.map((o) => (o.order_ref === orderRefToUpdate ? { ...o, status: newStatus } : o))
     );
+    const order = driverOrders.find((o) => o.order_ref === orderRefToUpdate);
+    const buildMessage = STATUS_SMS_MESSAGES[newStatus];
+    if (order && buildMessage) {
+      sendSms(order.phone, buildMessage(orderRefToUpdate));
+    }
   }
 
   const step = (setter, val, delta, min = 0) =>
@@ -569,15 +627,6 @@ export default function WulosIceCubes() {
                   }
                 />
               )}
-              <input
-                type="date"
-                className="w-full px-4 py-2 rounded-lg text-sm"
-                style={{ color: "#0B2027", background: "white" }}
-                value={customer.date}
-                onChange={(e) =>
-                  setCustomer({ ...customer, date: e.target.value })
-                }
-              />
               <textarea
                 className="w-full px-4 py-2 rounded-lg text-sm"
                 style={{ color: "#0B2027", background: "white" }}
@@ -734,7 +783,8 @@ export default function WulosIceCubes() {
           </h2>
           <p className="text-sm mb-6" style={{ opacity: 0.75 }}>
             Enter the order number you got at checkout, or the phone number
-            you ordered with.
+            you ordered with. Keep this page open and it'll update by itself
+            as your order moves along — you'll also get an SMS at each step.
           </p>
           <div className="flex gap-2">
             <input

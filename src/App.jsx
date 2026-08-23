@@ -42,8 +42,8 @@ const PAYFAST_CONFIG = {
   merchantKey: "cy495e0osf3q5", // replace with your merchant_key
   // These three must be real, publicly reachable URLs on your deployed site —
   // they won't work from inside this artifact preview, only once it's hosted.
-  returnUrl: "https://wulos-site.vercel.app/thank-you/",
-  cancelUrl: " https://wulos-site.vercel.app/cart/",
+  returnUrl: "https://wulos-site-2zo7.vercel.app/",
+  cancelUrl: " https://wulos-site-2zo7.vercel.app/",
   notifyUrl: " https://wulos-site.vercel.app/api/payfast-notify",
 };
 

@@ -206,7 +206,7 @@ export default function WulosIceCubes() {
       .from("orders")
       .select("*")
       .or(`order_ref.eq.${query},phone.eq.${query}`)
-      .order("id", { ascending: false });
+      .order("order_ref", { ascending: false });
 
     setTrackLoading(false);
     if (error || !data || data.length === 0) {
@@ -221,15 +221,15 @@ export default function WulosIceCubes() {
     const { data, error } = await supabase
       .from("orders")
       .select("*")
-      .order("id", { ascending: false });
+      .order("order_ref", { ascending: false });
     setDriverLoading(false);
     if (!error && data) setDriverOrders(data);
   }
 
-  async function updateOrderStatus(id, newStatus) {
-    await supabase.from("orders").update({ status: newStatus }).eq("id", id);
+  async function updateOrderStatus(orderRefToUpdate, newStatus) {
+    await supabase.from("orders").update({ status: newStatus }).eq("order_ref", orderRefToUpdate);
     setDriverOrders((prev) =>
-      prev.map((o) => (o.id === id ? { ...o, status: newStatus } : o))
+      prev.map((o) => (o.order_ref === orderRefToUpdate ? { ...o, status: newStatus } : o))
     );
   }
 
@@ -767,7 +767,7 @@ export default function WulosIceCubes() {
                 const currentIdx = ORDER_STATUSES.indexOf(order.status);
                 return (
                   <div
-                    key={order.id}
+                    key={order.order_ref}
                     className="rounded-2xl p-5"
                     style={{ background: "white", border: "2px solid #0B2027" }}
                   >
@@ -865,7 +865,7 @@ export default function WulosIceCubes() {
               <div className="space-y-4">
                 {driverOrders.map((order) => (
                   <div
-                    key={order.id}
+                    key={order.order_ref}
                     className="rounded-2xl p-5"
                     style={{ background: "white", border: "2px solid #0B2027" }}
                   >
@@ -892,7 +892,7 @@ export default function WulosIceCubes() {
                       {ORDER_STATUSES.map((s) => (
                         <button
                           key={s}
-                          onClick={() => updateOrderStatus(order.id, s)}
+                          onClick={() => updateOrderStatus(order.order_ref, s)}
                           className="px-3 py-1 rounded-full text-xs font-semibold border-2"
                           style={{
                             borderColor: "#0B2027",

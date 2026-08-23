@@ -206,7 +206,7 @@ export default function WulosIceCubes() {
       .from("orders")
       .select("*")
       .or(`order_ref.eq.${query},phone.eq.${query}`)
-      .order("created_at", { ascending: false });
+      .order("id", { ascending: false });
 
     setTrackLoading(false);
     if (error || !data || data.length === 0) {
@@ -221,7 +221,7 @@ export default function WulosIceCubes() {
     const { data, error } = await supabase
       .from("orders")
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("id", { ascending: false });
     setDriverLoading(false);
     if (!error && data) setDriverOrders(data);
   }

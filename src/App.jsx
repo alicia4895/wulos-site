@@ -30,6 +30,10 @@ function fullPriceNoDiscount(qty) {
 }
 
 const DELIVERY_FEE = 250;
+
+// Swap this for your own YouTube video's ID — it's the part of the URL
+// after "watch?v=", e.g. for youtube.com/watch?v=dQw4w9WgXcQ it's dQw4w9WgXcQ
+const PROMO_VIDEO_ID = "REPLACE_WITH_YOUR_VIDEO_ID";
 const FREEZER_PRICE = 1500;
 
 // ---- Order tracking (Supabase) -------------------------------------------
@@ -43,7 +47,11 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // protection (fine for a small business) — not full account security.
 const DRIVER_PASSCODE = "wulo2026";
 
-const ORDER_STATUSES = ["Placed", "Preparing", "Out for Delivery", "Delivered"];
+const DELIVERY_STATUSES = ["Placed", "Preparing", "Out for Delivery", "Delivered"];
+const PICKUP_STATUSES = ["Placed", "Preparing", "Ready for Collection", "Collected"];
+function statusesFor(fulfillment) {
+  return fulfillment === "pickup" ? PICKUP_STATUSES : DELIVERY_STATUSES;
+}
 
 const currency = (n) =>
   `R${n.toLocaleString("en-ZA", { minimumFractionDigits: 0 })}`;
@@ -58,12 +66,12 @@ const MOBILE_FREEZER_PHOTO = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD
 // to test without moving real money before you switch sandbox to false.
 const PAYFAST_CONFIG = {
   sandbox: true, // set to false only once you've tested with real sandbox payments
-  merchantId: "10053370", // replace with your merchant_id
-  merchantKey: "cy495e0osf3q5", // replace with your merchant_key
+  merchantId: "10000100", // replace with your merchant_id
+  merchantKey: "46f0cd694581a", // replace with your merchant_key
   // These three must be real, publicly reachable URLs on your deployed site —
   // they won't work from inside this artifact preview, only once it's hosted.
-  returnUrl: "https://wulosicecubes.co.za/",
-  cancelUrl: "https://wulosicecubes.co.za/",
+  returnUrl: "https://wulosicecubes.co.za/thank-you",
+  cancelUrl: "https://wulosicecubes.co.za/cart",
   notifyUrl: "https://wulosicecubes.co.za/api/payfast-notify",
 };
 
@@ -286,6 +294,14 @@ export default function WulosIceCubes() {
     Delivered: (ref) => ({
       subject: `Order ${ref} delivered — Wulo's Ice Cubes`,
       body: `Your order ${ref} has been delivered. Thank you for choosing Wulo's Ice Cubes!`,
+    }),
+    "Ready for Collection": (ref) => ({
+      subject: `Order ${ref} is ready for collection — Wulo's Ice Cubes`,
+      body: `Your order ${ref} is ready! Come collect it whenever suits you.`,
+    }),
+    Collected: (ref) => ({
+      subject: `Order ${ref} collected — Wulo's Ice Cubes`,
+      body: `Your order ${ref} has been marked as collected. Thank you for choosing Wulo's Ice Cubes!`,
     }),
   };
 
@@ -514,6 +530,28 @@ export default function WulosIceCubes() {
               {currency(freezerTotal)}
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* PROMO VIDEO */}
+      <section className="px-6 py-10 max-w-3xl mx-auto">
+        <h2 className="display-font text-2xl mb-1" style={{ fontWeight: 700 }}>
+          See Wulo's in action
+        </h2>
+        <p className="text-sm mb-6" style={{ opacity: 0.75 }}>
+          A quick look at what we do.
+        </p>
+        <div
+          className="rounded-2xl overflow-hidden"
+          style={{ aspectRatio: "16 / 9", border: "2px solid #0B2027" }}
+        >
+          <iframe
+            className="w-full h-full"
+            src={`https://www.youtube.com/embed/${PROMO_VIDEO_ID}`}
+            title="Wulo's Ice Cubes promo video"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
         </div>
       </section>
 
@@ -851,7 +889,8 @@ export default function WulosIceCubes() {
           {trackResults && (
             <div className="mt-6 space-y-4">
               {trackResults.map((order) => {
-                const currentIdx = ORDER_STATUSES.indexOf(order.status);
+                const orderStatuses = statusesFor(order.fulfillment);
+                const currentIdx = orderStatuses.indexOf(order.status);
                 return (
                   <div
                     key={order.order_ref}
@@ -872,7 +911,7 @@ export default function WulosIceCubes() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      {ORDER_STATUSES.map((s, i) => (
+                      {orderStatuses.map((s, i) => (
                         <React.Fragment key={s}>
                           <div
                             className="flex-1 h-2 rounded-full"
@@ -958,8 +997,21 @@ export default function WulosIceCubes() {
                   >
                     <div className="flex justify-between items-start mb-2">
                       <div>
-                        <div className="font-semibold mono-font">
+                        <div className="font-semibold mono-font flex items-center gap-2">
                           {order.order_ref}
+                          <span
+                            className="text-xs px-2 py-0.5 rounded-full"
+                            style={{
+                              background:
+                                order.fulfillment === "pickup"
+                                  ? "#FFE7B8"
+                                  : "#BEEBFF",
+                            }}
+                          >
+                            {order.fulfillment === "pickup"
+                              ? "Collection"
+                              : "Delivery"}
+                          </span>
                         </div>
                         <div className="text-sm" style={{ opacity: 0.7 }}>
                           {order.name} · {order.phone}
@@ -976,7 +1028,7 @@ export default function WulosIceCubes() {
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-3">
-                      {ORDER_STATUSES.map((s) => (
+                      {statusesFor(order.fulfillment).map((s) => (
                         <button
                           key={s}
                           onClick={() => updateOrderStatus(order.order_ref, s)}

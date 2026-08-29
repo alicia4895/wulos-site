@@ -132,6 +132,7 @@ export default function WulosIceCubes() {
   const [customer, setCustomer] = useState({
     name: "",
     phone: "",
+    email: "",
     address: "",
     date: "",
     notes: "",
@@ -168,15 +169,16 @@ export default function WulosIceCubes() {
   const detailsValid =
     customer.name.trim() &&
     customer.phone.trim() &&
+    customer.email.trim() &&
     (fulfillment === "pickup" || customer.address.trim());
 
   // Saves the order to Supabase (status: Placed) then moves to the pay screen.
-  // Fire-and-forget: failure to send an SMS should never block the order.
-  function sendSms(to, message) {
-    fetch("/api/send-sms", {
+  // Fire-and-forget: failure to send an email should never block the order.
+  function sendEmail(to, subject, message) {
+    fetch("/api/send-email", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to, message }),
+      body: JSON.stringify({ to, subject, message }),
     }).catch(() => {});
   }
 
@@ -188,6 +190,7 @@ export default function WulosIceCubes() {
       order_ref: ref,
       name: customer.name,
       phone: customer.phone,
+      email: customer.email,
       address:
         fulfillment === "delivery" ? customer.address : "Collection — Giyani",
       fulfillment,
@@ -201,9 +204,10 @@ export default function WulosIceCubes() {
       return;
     }
     setOrderRef(ref);
-    sendSms(
-      customer.phone,
-      `Wulo's Ice Cubes: Order ${ref} received! We'll text you when it's being prepared and out for delivery.`
+    sendEmail(
+      customer.email,
+      `Order ${ref} received — Wulo's Ice Cubes`,
+      `Hi ${customer.name},\n\nYour order ${ref} has been received!\n\n${buildItemName({ packQty, freezerQty })}\nTotal: ${currency(total)}\n\nWe'll email you again when it's being prepared and out for delivery.\n\nThanks for choosing Wulo's Ice Cubes!`
     );
     setStage("pay");
   }
@@ -270,13 +274,19 @@ export default function WulosIceCubes() {
     if (!error && data) setDriverOrders(data);
   }
 
-  const STATUS_SMS_MESSAGES = {
-    Preparing: (ref) =>
-      `Wulo's Ice Cubes: Order ${ref} is now being prepared.`,
-    "Out for Delivery": (ref) =>
-      `Wulo's Ice Cubes: Order ${ref} is out for delivery — see you soon!`,
-    Delivered: (ref) =>
-      `Wulo's Ice Cubes: Order ${ref} has been delivered. Thank you for your order!`,
+  const STATUS_EMAIL_MESSAGES = {
+    Preparing: (ref) => ({
+      subject: `Order ${ref} is being prepared — Wulo's Ice Cubes`,
+      body: `Good news! Your order ${ref} is now being prepared.`,
+    }),
+    "Out for Delivery": (ref) => ({
+      subject: `Order ${ref} is out for delivery — Wulo's Ice Cubes`,
+      body: `Your order ${ref} is on its way — see you soon!`,
+    }),
+    Delivered: (ref) => ({
+      subject: `Order ${ref} delivered — Wulo's Ice Cubes`,
+      body: `Your order ${ref} has been delivered. Thank you for choosing Wulo's Ice Cubes!`,
+    }),
   };
 
   async function updateOrderStatus(orderRefToUpdate, newStatus) {
@@ -285,9 +295,10 @@ export default function WulosIceCubes() {
       prev.map((o) => (o.order_ref === orderRefToUpdate ? { ...o, status: newStatus } : o))
     );
     const order = driverOrders.find((o) => o.order_ref === orderRefToUpdate);
-    const buildMessage = STATUS_SMS_MESSAGES[newStatus];
-    if (order && buildMessage) {
-      sendSms(order.phone, buildMessage(orderRefToUpdate));
+    const buildEmail = STATUS_EMAIL_MESSAGES[newStatus];
+    if (order && buildEmail && order.email) {
+      const { subject, body } = buildEmail(orderRefToUpdate);
+      sendEmail(order.email, subject, body);
     }
   }
 
@@ -616,6 +627,16 @@ export default function WulosIceCubes() {
                   setCustomer({ ...customer, phone: e.target.value })
                 }
               />
+              <input
+                type="email"
+                className="w-full px-4 py-2 rounded-lg text-sm"
+                style={{ color: "#0B2027", background: "white" }}
+                placeholder="Email address"
+                value={customer.email}
+                onChange={(e) =>
+                  setCustomer({ ...customer, email: e.target.value })
+                }
+              />
               {fulfillment === "delivery" && (
                 <input
                   className="w-full px-4 py-2 rounded-lg text-sm"
@@ -740,6 +761,7 @@ export default function WulosIceCubes() {
                   setCustomer({
                     name: "",
                     phone: "",
+                    email: "",
                     address: "",
                     date: "",
                     notes: "",
@@ -756,22 +778,37 @@ export default function WulosIceCubes() {
 
       {/* FOOTER */}
       <footer
-        className="px-6 py-8 text-sm flex flex-col sm:flex-row justify-between gap-3 max-w-5xl mx-auto"
+        className="px-6 py-8 max-w-5xl mx-auto"
         style={{ opacity: 0.75 }}
       >
-        <div className="flex items-center gap-2">
-          <Phone size={14} /> Call or WhatsApp 078 306 7444 to confirm bulk orders
+        <div className="flex flex-col sm:flex-row justify-between gap-3 text-sm">
+          <div className="flex items-center gap-2">
+            <Phone size={14} /> Call or WhatsApp 078 306 7444 to confirm bulk orders
+          </div>
+          <div className="flex items-center gap-2">
+            <MapPin size={14} /> Giyani, Limpopo
+          </div>
+          <button
+            onClick={() => setView("driver")}
+            className="text-xs underline"
+          >
+            Driver login
+          </button>
         </div>
-        <div className="flex items-center gap-2">
-          <MapPin size={14} /> Giyani, Limpopo
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-4 text-xs">
+          <button onClick={() => setView("terms")} className="underline">
+            Terms &amp; Conditions
+          </button>
+          <button onClick={() => setView("privacy")} className="underline">
+            Privacy Policy
+          </button>
+          <button onClick={() => setView("refunds")} className="underline">
+            Refund &amp; Cancellation Policy
+          </button>
+          <button onClick={() => setView("shipping")} className="underline">
+            Shipping &amp; Delivery Policy
+          </button>
         </div>
-        <button
-          onClick={() => setView("driver")}
-          className="text-xs underline"
-          style={{ opacity: 0.5 }}
-        >
-          Driver login
-        </button>
       </footer>
       </>
       )}
@@ -784,7 +821,7 @@ export default function WulosIceCubes() {
           <p className="text-sm mb-6" style={{ opacity: 0.75 }}>
             Enter the order number you got at checkout, or the phone number
             you ordered with. Keep this page open and it'll update by itself
-            as your order moves along — you'll also get an SMS at each step.
+            as your order moves along — you'll also get an email at each step.
           </p>
           <div className="flex gap-2">
             <input
@@ -966,6 +1003,175 @@ export default function WulosIceCubes() {
           )}
         </section>
       )}
+
+      {["terms", "privacy", "refunds", "shipping"].includes(view) && (
+        <section className="px-6 py-16 max-w-2xl mx-auto min-h-[60vh]">
+          <button
+            onClick={() => setView("shop")}
+            className="text-sm underline mb-6"
+            style={{ color: "#0E7C9E" }}
+          >
+            ← Back to site
+          </button>
+          {view === "terms" && <TermsPolicy />}
+          {view === "privacy" && <PrivacyPolicy />}
+          {view === "refunds" && <RefundsPolicy />}
+          {view === "shipping" && <ShippingPolicy />}
+        </section>
+      )}
     </div>
   );
 }
+
+// ---- Policy pages ---------------------------------------------------------
+// Draft policies for a small South African ice-delivery business. These are
+// a solid starting point, not a substitute for review by a qualified
+// professional — especially the refund policy, since consumer protection
+// rules can be specific.
+
+function PolicyHeading({ children }) {
+  return (
+    <h1 className="display-font text-2xl mb-4" style={{ fontWeight: 700 }}>
+      {children}
+    </h1>
+  );
+}
+
+function PolicySection({ title, children }) {
+  return (
+    <div className="mb-5">
+      <h2 className="font-semibold mb-1">{title}</h2>
+      <p className="text-sm" style={{ opacity: 0.85 }}>
+        {children}
+      </p>
+    </div>
+  );
+}
+
+function TermsPolicy() {
+  return (
+    <div>
+      <PolicyHeading>Terms &amp; Conditions</PolicyHeading>
+      <PolicySection title="About Wulo's Ice Cubes">
+        Wulo's Ice Cubes sells ice packs and offers mobile freezer hire to
+        customers in Giyani, Limpopo, South Africa. By placing an order
+        through this website, you agree to these terms.
+      </PolicySection>
+      <PolicySection title="Ordering and pricing">
+        Ice packs are sold at R25 each, with a discounted rate of R200 for
+        every full bundle of 10 packs. Mobile freezer hire is charged at a
+        flat rate of R1500 per unit, per hire. Prices are shown in South
+        African Rand and may change from time to time without prior notice;
+        the price shown at checkout is the price that applies to your order.
+      </PolicySection>
+      <PolicySection title="Payment">
+        Payments are processed securely by PayFast. Wulo's Ice Cubes does not
+        collect or store your card details — these are entered directly on
+        PayFast's secure payment page.
+      </PolicySection>
+      <PolicySection title="Delivery and collection">
+        Orders can be collected free of charge or delivered within the
+        Giyani area for a flat fee of R250. See our Shipping &amp; Delivery
+        Policy for more detail.
+      </PolicySection>
+      <PolicySection title="Liability">
+        While we take care in preparing and delivering every order, Wulo's
+        Ice Cubes is not liable for delays caused by circumstances outside
+        our reasonable control, such as weather, road conditions, or
+        incorrect delivery details provided by the customer.
+      </PolicySection>
+      <PolicySection title="Governing law">
+        These terms are governed by the laws of South Africa.
+      </PolicySection>
+    </div>
+  );
+}
+
+function PrivacyPolicy() {
+  return (
+    <div>
+      <PolicyHeading>Privacy Policy</PolicyHeading>
+      <PolicySection title="Information we collect">
+        When you place an order, we collect your name, phone number, email
+        address, and delivery address (if applicable). This information is
+        used only to process and deliver your order, and to send you updates
+        about its status.
+      </PolicySection>
+      <PolicySection title="How we use your information">
+        Your details are used to fulfil your order, contact you about
+        delivery or collection, and send order-status notifications by
+        email. We do not sell or rent your personal information to third
+        parties.
+      </PolicySection>
+      <PolicySection title="Sharing with service providers">
+        Your payment details are handled directly by PayFast and never pass
+        through our systems. Your order information is stored securely with
+        our database provider, Supabase, solely to manage and track your
+        order.
+      </PolicySection>
+      <PolicySection title="Your rights">
+        In line with South Africa's Protection of Personal Information Act
+        (POPIA), you may ask us at any time what personal information we
+        hold about you, and request that it be corrected or deleted, by
+        contacting us using the details on this website.
+      </PolicySection>
+    </div>
+  );
+}
+
+function RefundsPolicy() {
+  return (
+    <div>
+      <PolicyHeading>Refund &amp; Cancellation Policy</PolicyHeading>
+      <PolicySection title="Ice packs">
+        Because ice packs are a perishable product, orders cannot be
+        cancelled or refunded once they have been prepared or dispatched for
+        delivery. If you need to cancel, please contact us as soon as
+        possible before your order is prepared. If your order arrives
+        damaged, melted due to our error, or otherwise not as described,
+        contact us within 24 hours and we will offer a replacement or
+        refund.
+      </PolicySection>
+      <PolicySection title="Mobile freezer hire">
+        Freezer hire bookings may be cancelled or rescheduled free of charge
+        if you contact us at least 24 hours before the booked hire date. 
+        Cancellations made less than 24 hours before the hire date may not be
+        eligible for a refund.
+      </PolicySection>
+      <PolicySection title="How to request a refund or cancellation">
+        Contact us by phone or WhatsApp at 078 306 7444, or by email, with
+        your order number, as soon as possible.
+      </PolicySection>
+    </div>
+  );
+}
+
+function ShippingPolicy() {
+  return (
+    <div>
+      <PolicyHeading>Shipping &amp; Delivery Policy</PolicyHeading>
+      <PolicySection title="Delivery area">
+        We currently deliver within Giyani, Limpopo, and the surrounding
+        area. If you're unsure whether we deliver to your location, contact
+        us before placing your order.
+      </PolicySection>
+      <PolicySection title="Delivery fee">
+        Delivery costs a flat R250 per order. Collection directly from us in
+        Giyani is available free of charge — you can choose either option at
+        checkout.
+      </PolicySection>
+      <PolicySection title="Delivery timing">
+        We aim to deliver or have orders ready for collection as promptly as
+        possible; exact timing will be confirmed with you by phone or email
+        after you place your order.
+      </PolicySection>
+      <PolicySection title="If you're not available">
+        If you choose delivery and are not available to receive your order
+        at the agreed time and address, please contact us as soon as
+        possible to arrange a new delivery time. Additional delivery fees
+        may apply for repeated failed deliveries.
+      </PolicySection>
+    </div>
+  );
+}
+

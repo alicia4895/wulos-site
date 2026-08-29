@@ -30,10 +30,6 @@ function fullPriceNoDiscount(qty) {
 }
 
 const DELIVERY_FEE = 250;
-
-// Swap this for your own YouTube video's ID — it's the part of the URL
-// after "watch?v=", e.g. for youtube.com/watch?v=dQw4w9WgXcQ it's dQw4w9WgXcQ
-const PROMO_VIDEO_ID = "REPLACE_WITH_YOUR_VIDEO_ID";
 const FREEZER_PRICE = 1500;
 
 // ---- Order tracking (Supabase) -------------------------------------------
@@ -530,28 +526,6 @@ export default function WulosIceCubes() {
               {currency(freezerTotal)}
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* PROMO VIDEO */}
-      <section className="px-6 py-10 max-w-3xl mx-auto">
-        <h2 className="display-font text-2xl mb-1" style={{ fontWeight: 700 }}>
-          See Wulo's in action
-        </h2>
-        <p className="text-sm mb-6" style={{ opacity: 0.75 }}>
-          A quick look at what we do.
-        </p>
-        <div
-          className="rounded-2xl overflow-hidden"
-          style={{ aspectRatio: "16 / 9", border: "2px solid #0B2027" }}
-        >
-          <iframe
-            className="w-full h-full"
-            src={`https://www.youtube.com/embed/${PROMO_VIDEO_ID}`}
-            title="Wulo's Ice Cubes promo video"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          />
         </div>
       </section>
 
